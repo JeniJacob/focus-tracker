@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Signal — Focus &amp; Distraction Tracker</title>
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   Concept: an instrument panel for attention — a seismograph
+   for focus. Dark "cockpit" mode by default, a "daylight" mode
+   for people who work better on a light screen.
+   ============================================================ */
+:root{
+  --ink:#12151b;
+  --ink-panel:#181c24;
+  --ink-panel-raised:#1f2430;
+  --ink-line:#2a2f3b;
+  --paper:#f6f4ee;
+  --paper-panel:#ffffff;
+  --paper-line:#e4e0d4;
+
+  --signal:#3fa796;      /* focus / positive */
+  --signal-dim:#2c766a;
+  --alert:#e8814a;       /* distraction marker */
+  --alert-dim:#b8602f;
+  --violet:#7c6fe0;      /* secondary data */
+  --violet-dim:#5c4fc0;
+
+  --text:#eef0f3;
+  --text-muted:#8a8f98;
+  --text-inverse:#12151b;
+
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", "Roboto Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius: 18px;
+  --radius-sm: 10px;
+  --btn-size: 1;
+  --font-size: 1;
+}
+
+html[data-theme="light"]{
+  --ink:#f6f4ee;
+  --ink-panel:#ffffff;
+  --ink-panel-raised:#fbfaf6;
+  --ink-line:#e4e0d4;
+  --text:#181c22;
+  --text-muted:#6b6f78;
+  --text-inverse:#f6f4ee;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--ink);
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:calc(15px * var(--font-size));
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:70px;
+  transition:background .3s ease, color .3s ease;
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+}
+
+/* ---------- layout shells ---------- */
+.wrap{max-width:920px;margin:0 auto;padding:18px 16px 24px;}
+.panel{
+  background:var(--ink-panel);
+  border:1px solid var(--ink-line);
+  border-radius:var(--radius);
+  padding:18px;
+  margin-bottom:16px;
+}
+.panel-raised{background:var(--ink-panel-raised);}
+h1,h2,h3{margin:0 0 4px;font-weight:700;letter-spacing:-0.01em;}
+h2{font-size:1.02rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;}
+p{margin:0;}
+.eyebrow{
+  font-family:var(--mono);
+  font-size:.72rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--text-muted);
+}
+
+/* ---------- top bar ---------- */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 16px 6px;max-width:920px;margin:0 auto;
+}
+.brand{display:flex;align-items:baseline;gap:8px;}
+.brand .mark{
+  width:10px;height:10px;border-radius:50%;
+  background:var(--signal);
+  box-shadow:0 0 0 4px rgba(63,167,150,.15);
+}
+.brand h1{font-size:1.2rem;}
+.clockbox{font-family:var(--mono);text-align:right;font-size:.8rem;color:var(--text-muted);}
+.clockbox .time{font-size:1rem;color:var(--text);}
+
+/* ---------- signature element: pulse strip ---------- */
+.pulse-strip{
+  width:100%;height:76px;display:block;
+  border-radius:var(--radius-sm);
+  background:linear-gradient(180deg, var(--ink-panel-raised), var(--ink-panel));
+  border:1px solid var(--ink-line);
+}
+
+/* ---------- timer readouts ---------- */
+.readouts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;}
+.readout{
+  background:var(--ink-panel-raised);
+  border:1px solid var(--ink-line);
+  border-radius:var(--radius-sm);
+  padding:14px;
+}
+.readout .label{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);}
+.readout .val{font-family:var(--mono);font-size:2rem;font-weight:600;margin-top:2px;letter-spacing:-.02em;}
+.readout.session .val{color:var(--text);}
+.readout.focus .val{color:var(--signal);}
+.status-pill{
+  display:inline-block;font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;
+  text-transform:uppercase;padding:3px 10px;border-radius:20px;margin-top:8px;
+  background:var(--ink-line);color:var(--text-muted);
+}
+.status-pill.running{background:rgba(63,167,150,.18);color:var(--signal);}
+.status-pill.paused{background:rgba(232,129,74,.18);color:var(--alert);}
+.status-pill.finished{background:rgba(124,111,224,.18);color:var(--violet);}
+
+/* ---------- buttons ---------- */
+.btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+.btn{
+  font-family:var(--sans);
+  font-weight:600;
+  font-size:calc(.92rem * var(--btn-size));
+  padding:calc(14px * var(--btn-size)) 12px;
+  border-radius:var(--radius-sm);
+  border:1px solid var(--ink-line);
+  background:var(--ink-panel-raised);
+  color:var(--text);
+  cursor:pointer;
+  transition:transform .12s ease, background .15s ease, opacity .15s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.btn:active{transform:scale(.97);}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn.primary{background:var(--signal);border-color:var(--signal);color:#08211d;}
+.btn.warn{background:var(--alert);border-color:var(--alert);color:#2a1305;}
+.btn.ghost{background:transparent;}
+.btn.full{grid-column:1 / -1;}
+.btn.distract{
+  grid-column:1 / -1;
+  background:var(--alert);
+  border-color:var(--alert);
+  color:#2a1305;
+  font-size:calc(1.05rem * var(--btn-size));
+  padding:calc(18px * var(--btn-size)) 12px;
+}
+
+/* ---------- stat tiles ---------- */
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+@media(min-width:600px){.stat-grid{grid-template-columns:repeat(4,1fr);}}
+.stat{
+  background:var(--ink-panel-raised);border:1px solid var(--ink-line);
+  border-radius:var(--radius-sm);padding:12px;
+}
+.stat .label{font-size:.72rem;color:var(--text-muted);}
+.stat .val{font-family:var(--mono);font-size:1.15rem;font-weight:700;margin-top:2px;}
+.stat .val.signal{color:var(--signal);}
+.stat .val.alert{color:var(--alert);}
+.stat .val.violet{color:var(--violet);}
+
+/* ---------- windows row ---------- */
+.window-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;}
+.window-chip{
+  flex:0 0 auto;background:var(--ink-panel-raised);border:1px solid var(--ink-line);
+  border-radius:20px;padding:8px 14px;font-family:var(--mono);font-size:.78rem;text-align:center;
+}
+.window-chip b{display:block;font-size:1rem;color:var(--text);}
+
+/* ---------- nav tabs ---------- */
+.tabbar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--ink-panel);border-top:1px solid var(--ink-line);
+  display:flex;justify-content:space-around;padding:8px 4px calc(8px + env(safe-area-inset-bottom));
+  z-index:50;
+}
+.tab{
+  background:none;border:none;color:var(--text-muted);font-family:var(--sans);
+  font-size:.68rem;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:4px 8px;cursor:pointer;
+}
+.tab .ic{font-size:1.15rem;}
+.tab.active{color:var(--signal);}
+
+.view{display:none;}
+.view.active{display:block;animation:fadein .25s ease;}
+@keyframes fadein{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+/* ---------- table ---------- */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:.82rem;min-width:640px;}
+th,td{padding:9px 8px;text-align:left;border-bottom:1px solid var(--ink-line);white-space:nowrap;}
+th{
+  font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--text-muted);cursor:pointer;user-select:none;
+}
+th:hover{color:var(--text);}
+.search-input{
+  width:100%;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--ink-line);
+  background:var(--ink-panel-raised);color:var(--text);font-family:var(--sans);margin-bottom:10px;
+}
+
+/* ---------- score badge ---------- */
+.score-badge{display:inline-block;padding:2px 9px;border-radius:12px;font-family:var(--mono);font-size:.72rem;font-weight:700;}
+.score-Excellent{background:rgba(63,167,150,.18);color:var(--signal);}
+.score-Good{background:rgba(124,111,224,.18);color:var(--violet);}
+.score-Average{background:rgba(232,129,74,.18);color:var(--alert);}
+.score-Needs{background:rgba(220,80,80,.18);color:#e06060;}
+
+/* ---------- achievements ---------- */
+.achieve-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+@media(min-width:600px){.achieve-grid{grid-template-columns:repeat(3,1fr);}}
+.achieve{
+  border:1px solid var(--ink-line);border-radius:var(--radius-sm);padding:12px;text-align:center;
+  background:var(--ink-panel-raised);opacity:.35;
+}
+.achieve.unlocked{opacity:1;border-color:var(--signal);}
+.achieve .ic{font-size:1.6rem;}
+.achieve .name{font-size:.78rem;font-weight:700;margin-top:4px;}
+.achieve .desc{font-size:.68rem;color:var(--text-muted);}
+
+/* ---------- calendar ---------- */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+.cal-cell{
+  aspect-ratio:1;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:.7rem;background:var(--ink-line);color:var(--text-muted);position:relative;
+}
+.cal-cell.has-data{color:#08211d;font-weight:700;}
+.cal-dow{font-size:.62rem;text-align:center;color:var(--text-muted);font-family:var(--mono);}
+
+/* ---------- settings ---------- */
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:.8rem;color:var(--text-muted);margin-bottom:6px;}
+.field input[type=number], .field select{
+  width:100%;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--ink-line);
+  background:var(--ink-panel-raised);color:var(--text);font-family:var(--sans);
+}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--ink-line);}
+.switch{position:relative;width:44px;height:26px;flex:0 0 auto;}
+.switch input{opacity:0;width:0;height:0;}
+.slider{position:absolute;inset:0;background:var(--ink-line);border-radius:20px;cursor:pointer;transition:.2s;}
+.slider:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+input:checked + .slider{background:var(--signal);}
+input:checked + .slider:before{transform:translateX(18px);}
+.seg{display:flex;border:1px solid var(--ink-line);border-radius:var(--radius-sm);overflow:hidden;}
+.seg button{flex:1;background:var(--ink-panel-raised);border:none;color:var(--text-muted);padding:10px;font-family:var(--sans);font-weight:600;cursor:pointer;}
+.seg button.active{background:var(--signal);color:#08211d;}
+
+/* ---------- motivation toast ---------- */
+#toast{
+  position:fixed;left:50%;bottom:80px;transform:translate(-50%,20px);
+  background:var(--ink-panel-raised);border:1px solid var(--signal);color:var(--text);
+  padding:12px 18px;border-radius:14px;font-size:.85rem;max-width:88vw;text-align:center;
+  opacity:0;pointer-events:none;transition:all .3s ease;z-index:60;
+}
+#toast.show{opacity:1;transform:translate(-50%,0);}
+
+canvas{max-width:100%;}
+.chart-box{background:var(--ink-panel-raised);border:1px solid var(--ink-line);border-radius:var(--radius-sm);padding:10px;margin-bottom:14px;}
+.chart-box h3{font-size:.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.empty{color:var(--text-muted);font-size:.85rem;text-align:center;padding:20px 0;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media(max-width:520px){.grid2{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="mark"></span><h1>Signal</h1></div>
+  <div class="clockbox">
+    <div id="dateNow" class="eyebrow"></div>
+    <div id="timeNow" class="time"></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ DASHBOARD ============ -->
+  <section id="view-dashboard" class="view active">
+
+    <div class="panel">
+      <canvas id="pulseCanvas" class="pulse-strip" height="76"></canvas>
+      <div class="readouts">
+        <div class="readout session">
+          <div class="label">Session time</div>
+          <div class="val" id="sessionTimer">00:00:00</div>
+          <span class="status-pill" id="statusPill">Idle</span>
+        </div>
+        <div class="readout focus">
+          <div class="label">Focus streak</div>
+          <div class="val" id="focusTimer">00:00:00</div>
+        </div>
+      </div>
+
+      <div class="btn-grid">
+        <button class="btn primary full" id="btnStart">Start session</button>
+        <button class="btn distract" id="btnDistract" disabled>I got distracted</button>
+        <button class="btn" id="btnPause" disabled>Pause</button>
+        <button class="btn" id="btnResume" disabled>Resume</button>
+        <button class="btn warn" id="btnEnd" disabled>End session</button>
+        <button class="btn ghost" id="btnReset">Reset</button>
+        <button class="btn ghost" id="btnExport">Export CSV</button>
+        <button class="btn ghost" id="btnClear">Clear history</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Current session</h2>
+      <div class="stat-grid" id="liveStats" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Distractions per window</h2>
+      <div class="window-row" id="windowRow" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Focus analytics</h2>
+      <div class="stat-grid" id="analyticsStats" style="margin-top:10px;"></div>
+    </div>
+
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section id="view-history" class="view">
+    <div class="panel">
+      <h2>Session history</h2>
+      <input type="text" class="search-input" id="historySearch" placeholder="Search by date…" style="margin-top:10px;">
+      <div class="table-wrap">
+        <table id="historyTable">
+          <thead><tr>
+            <th data-key="date">Date</th>
+            <th data-key="start">Start</th>
+            <th data-key="end">End</th>
+            <th data-key="duration">Duration</th>
+            <th data-key="distractions">Distr.</th>
+            <th data-key="avgFocus">Avg Focus</th>
+            <th data-key="longestFocus">Longest</th>
+            <th data-key="score">Score</th>
+          </tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="historyEmpty">No sessions recorded yet — finish a session to see it here.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Daily progress</h2>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table>
+          <thead><tr><th>Date</th><th>Sessions</th><th>Study time</th><th>Distr.</th><th>Avg focus</th><th>Longest</th><th>Best score</th></tr></thead>
+          <tbody id="dailyBody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="dailyEmpty">Nothing logged yet.</div>
+    </div>
+  </section>
+
+  <!-- ============ REPORTS ============ -->
+  <section id="view-reports" class="view">
+    <div class="panel">
+      <h2>Weekly report — last 7 days</h2>
+      <div class="stat-grid" id="weeklyStats" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Monthly calendar</h2>
+      <div class="eyebrow" id="calLabel" style="margin:8px 0;"></div>
+      <div class="cal-grid" id="calDow"></div>
+      <div class="cal-grid" id="calGrid" style="margin-top:5px;"></div>
+      <div class="stat-grid" id="monthlyStats" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Charts</h2>
+      <div class="chart-box"><h3>Daily distraction count</h3><canvas id="chartDistractions" height="140"></canvas></div>
+      <div class="chart-box"><h3>Average focus duration</h3><canvas id="chartAvgFocus" height="140"></canvas></div>
+      <div class="chart-box"><h3>Longest focus streak</h3><canvas id="chartLongest" height="140"></canvas></div>
+      <div class="grid2">
+        <div class="chart-box"><h3>Weekly progress (focus score)</h3><canvas id="chartWeekly" height="140"></canvas></div>
+        <div class="chart-box"><h3>Monthly improvement</h3><canvas id="chartMonthly" height="140"></canvas></div>
+      </div>
+      <div class="chart-box"><h3>Distractions per session</h3><canvas id="chartPerSession" height="140"></canvas></div>
+    </div>
+  </section>
+
+  <!-- ============ ACHIEVEMENTS ============ -->
+  <section id="view-achievements" class="view">
+    <div class="panel">
+      <h2>Achievements</h2>
+      <div class="achieve-grid" id="achieveGrid" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="view-settings" class="view">
+    <div class="panel">
+      <h2>Targets</h2>
+      <div class="field" style="margin-top:12px;">
+        <label for="setSessionLen">Target session length (minutes)</label>
+        <input type="number" id="setSessionLen" min="1">
+      </div>
+      <div class="field">
+        <label for="setFocusLen">Target focus duration (minutes)</label>
+        <input type="number" id="setFocusLen" min="1">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Preferences</h2>
+      <div class="toggle-row">
+        <span>Sound on distraction</span>
+        <label class="switch"><input type="checkbox" id="setSound"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Auto-save session progress</span>
+        <label class="switch"><input type="checkbox" id="setAutosave"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row" style="border-bottom:none;">
+        <span>Theme</span>
+        <div class="seg" style="width:160px;">
+          <button data-theme="dark" id="segDark">Dark</button>
+          <button data-theme="light" id="segLight">Light</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Display</h2>
+      <div class="field" style="margin-top:12px;">
+        <label>Button size</label>
+        <div class="seg">
+          <button data-btnsize="0.85">Small</button>
+          <button data-btnsize="1">Medium</button>
+          <button data-btnsize="1.2">Large</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Font size</label>
+        <div class="seg">
+          <button data-fontsize="0.9">Small</button>
+          <button data-fontsize="1">Medium</button>
+          <button data-fontsize="1.15">Large</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div id="toast"></div>
+
+<div class="tabbar">
+  <button class="tab active" data-view="dashboard"><span class="ic">◎</span>Dashboard</button>
+  <button class="tab" data-view="history"><span class="ic">▤</span>History</button>
+  <button class="tab" data-view="reports"><span class="ic">◱</span>Reports</button>
+  <button class="tab" data-view="achievements"><span class="ic">✦</span>Awards</button>
+  <button class="tab" data-view="settings"><span class="ic">⚙</span>Settings</button>
+</div>
+
+<script>
+/* ================================================================
+   SIGNAL — FOCUS & DISTRACTION TRACKER
+   Single-file, offline, localStorage-backed.
+   Sections below: storage, state, timers, stats/analytics,
+   charts (hand-rolled canvas, no CDN so it stays fully offline),
+   rendering, and event wiring.
+   ================================================================ */
+
+/* ---------------- storage helpers ---------------- */
+const STORE_KEYS = { sessions:'fdt.sessions', settings:'fdt.settings', achievements:'fdt.achievements', live:'fdt.liveSession' };
+
+function loadJSON(key, fallback){
+  try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch(e){ return fallback; }
+}
+function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){ /* storage full or unavailable */ } }
+
+let settings = loadJSON(STORE_KEYS.settings, {
+  sessionLenMin: 25,
+  focusLenMin: 10,
+  sound: true,
+  autosave: true,
+  theme: 'dark',
+  btnSize: 1,
+  fontSize: 1
+});
+let history = loadJSON(STORE_KEYS.sessions, []); // completed sessions
+let achievementsUnlocked = loadJSON(STORE_KEYS.achievements, {});
+
+/* ---------------- achievement catalogue ---------------- */
+const ACHIEVEMENTS = [
+  { id:'first_session', ic:'🏁', name:'First Session', desc:'Complete your first session' },
+  { id:'focus_10', ic:'🌱', name:'10 Minutes Focus', desc:'Reach a 10 min focus streak' },
+  { id:'focus_30', ic:'🌿', name:'30 Minutes Focus', desc:'Reach a 30 min focus streak' },
+  { id:'focus_60', ic:'🌳', name:'60 Minutes Focus', desc:'Reach a 60 min focus streak' },
+  { id:'sessions_5', ic:'📆', name:'5 Sessions Completed', desc:'Finish 5 sessions' },
+  { id:'minutes_100', ic:'⏱️', name:'100 Total Minutes', desc:'Bank 100 minutes of study time' },
+  { id:'daily_streak', ic:'🔥', name:'1 Day Without Missing Practice', desc:'Log a session two days in a row' },
+  { id:'best_focus', ic:'🏆', name:'Best Focus Ever', desc:'Set a new personal focus record' },
+];
+
+/* ---------------- live session state ---------------- */
+let session = null; // null when idle
+/*
+  session = {
+    id, startTime (ms), status: running|paused|finished,
+    pausedAt (ms|null), totalPausedMs,
+    streakStartTime (ms),
+    distractions: [{t, sessionTimeMs, gapMs, streakMs}],
+  }
+*/
+
+function restoreLiveSession(){
+  const saved = loadJSON(STORE_KEYS.live, null);
+  if(saved && saved.status !== 'finished'){ session = saved; }
+}
+restoreLiveSession();
+
+function persistLive(){ if(settings.autosave) saveJSON(STORE_KEYS.live, session); }
+
+/* ---------------- time helpers ---------------- */
+function fmtHMS(ms){
+  if(ms < 0) ms = 0;
+  const s = Math.floor(ms/1000);
+  const h = String(Math.floor(s/3600)).padStart(2,'0');
+  const m = String(Math.floor((s%3600)/60)).padStart(2,'0');
+  const sec = String(s%60).padStart(2,'0');
+  return `${h}:${m}:${sec}`;
+}
+function fmtMinSec(ms){
+  if(ms < 0 || !isFinite(ms)) ms = 0;
+  const totalSec = Math.round(ms/1000);
+  const m = Math.floor(totalSec/60);
+  const s = totalSec%60;
+  if(m<=0) return `${s} sec`;
+  return `${m} min ${s} sec`;
+}
+function fmtClock(d){ return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function dayKey(msOrDate){
+  const d = (msOrDate instanceof Date) ? msOrDate : new Date(msOrDate);
+  return d.toISOString().slice(0,10);
+}
+
+/* ---------------- session control ---------------- */
+function startSession(){
+  const now = Date.now();
+  session = {
+    id: 's_' + now,
+    startTime: now,
+    status: 'running',
+    pausedAt: null,
+    totalPausedMs: 0,
+    streakStartTime: now,
+    distractions: []
+  };
+  persistLive();
+  showToast('Session started. Stay with it.');
+  render();
+}
+
+function pauseSession(){
+  if(!session || session.status !== 'running') return;
+  session.pausedAt = Date.now();
+  session.status = 'paused';
+  persistLive();
+  render();
+}
+
+function resumeSession(){
+  if(!session || session.status !== 'paused') return;
+  const now = Date.now();
+  const delta = now - session.pausedAt;
+  session.totalPausedMs += delta;
+  session.streakStartTime += delta; // don't count paused time inside the focus streak
+  session.pausedAt = null;
+  session.status = 'running';
+  persistLive();
+  render();
+}
+
+function logDistraction(){
+  if(!session || session.status !== 'running') return;
+  const now = Date.now();
+  const sessionTimeMs = now - session.startTime - session.totalPausedMs;
+  const gapMs = now - session.streakStartTime;
+  session.distractions.push({ t: now, sessionTimeMs, gapMs, streakMs: gapMs });
+  session.streakStartTime = now;
+  if(settings.sound) playBeep();
+  persistLive();
+  pulseSpike();
+  const n = session.distractions.length;
+  showToast(n===1 ? `Logged. You focused for ${fmtMinSec(gapMs)} before that.` : `Distraction #${n} — streak was ${fmtMinSec(gapMs)}.`);
+  render();
+}
+
+function endSession(){
+  if(!session || (session.status !== 'running' && session.status !== 'paused')) return;
+  const now = Date.now();
+  if(session.status === 'paused'){
+    // fold trailing pause into totals before closing
+    const delta = now - session.pausedAt;
+    session.totalPausedMs += delta;
+  }
+  const durationMs = now - session.startTime - session.totalPausedMs;
+  // Treat the time from the last distraction to session end as a final (unfinished) streak
+  const finalStreakMs = now - session.streakStartTime;
+  const streaks = session.distractions.map(d=>d.streakMs).concat(session.distractions.length || finalStreakMs>0 ? [finalStreakMs] : []);
+  const validStreaks = streaks.filter(v=>v>=0);
+
+  const summary = buildSummary(session, durationMs, validStreaks, now);
+  history.push(summary);
+  saveJSON(STORE_KEYS.sessions, history);
+
+  checkAchievements(summary);
+
+  session.status = 'finished';
+  saveJSON(STORE_KEYS.live, null);
+  showToast(`Session complete — ${summary.distractions} distraction${summary.distractions===1?'':'s'}, score ${summary.focusScore}.`);
+  session = null;
+  render();
+}
+
+function resetSession(){
+  session = null;
+  saveJSON(STORE_KEYS.live, null);
+  render();
+}
+
+function buildSummary(sess, durationMs, streaks, endTime){
+  const distractions = sess.distractions.length;
+  const avg = streaks.length ? streaks.reduce((a,b)=>a+b,0)/streaks.length : durationMs;
+  const longest = streaks.length ? Math.max(...streaks) : durationMs;
+  const shortest = streaks.length ? Math.min(...streaks) : durationMs;
+  const sorted = [...streaks].sort((a,b)=>a-b);
+  const median = sorted.length ? (sorted.length%2 ? sorted[(sorted.length-1)/2] : (sorted[sorted.length/2-1]+sorted[sorted.length/2])/2) : durationMs;
+  const hours = durationMs/3600000;
+  const perHour = hours>0 ? distractions/hours : distractions;
+  const focusScore = computeFocusScore({avgFocusMs:avg, distractionsPerHour:perHour, streaks, targetFocusMs:settings.focusLenMin*60000});
+
+  return {
+    id: sess.id,
+    date: dayKey(sess.startTime),
+    startTime: sess.startTime,
+    endTime: endTime,
+    durationMs,
+    distractions,
+    distractionLog: sess.distractions,
+    avgFocusMs: avg,
+    longestFocusMs: longest,
+    shortestFocusMs: shortest,
+    medianFocusMs: median,
+    distractionsPerHour: perHour,
+    focusScore: focusScore.score,
+    focusScoreLabel: focusScore.label
+  };
+}
+
+function computeFocusScore({avgFocusMs, distractionsPerHour, streaks, targetFocusMs}){
+  const durationComponent = Math.max(0, Math.min(1, avgFocusMs/targetFocusMs)) * 40;
+  const distractionComponent = Math.max(0, 1 - distractionsPerHour/10) * 30;
+  let consistencyComponent = 30;
+  if(streaks.length > 1){
+    const mean = streaks.reduce((a,b)=>a+b,0)/streaks.length;
+    const variance = streaks.reduce((a,b)=>a+Math.pow(b-mean,2),0)/streaks.length;
+    const stddev = Math.sqrt(variance);
+    const cv = mean>0 ? stddev/mean : 1;
+    consistencyComponent = Math.max(0, 1 - Math.min(1,cv)) * 30;
+  }
+  const score = Math.round(durationComponent + distractionComponent + consistencyComponent);
+  let label = 'Needs Improvement';
+  if(score>=85) label='Excellent';
+  else if(score>=70) label='Good';
+  else if(score>=50) label='Average';
+  return { score: Math.max(0,Math.min(100,score)), label };
+}
+
+/* ---------------- achievements ---------------- */
+function unlock(id){
+  if(!achievementsUnlocked[id]){
+    achievementsUnlocked[id] = Date.now();
+    saveJSON(STORE_KEYS.achievements, achievementsUnlocked);
+    const meta = ACHIEVEMENTS.find(a=>a.id===id);
+    if(meta) showToast(`Achievement unlocked: ${meta.name} ${meta.ic}`);
+  }
+}
+function checkAchievements(summary){
+  if(history.length>=1) unlock('first_session');
+  if(history.length>=5) unlock('sessions_5');
+  if(summary.longestFocusMs >= 10*60000) unlock('focus_10');
+  if(summary.longestFocusMs >= 30*60000) unlock('focus_30');
+  if(summary.longestFocusMs >= 60*60000) unlock('focus_60');
+  const totalMinutes = history.reduce((a,s)=>a+s.durationMs,0)/60000;
+  if(totalMinutes>=100) unlock('minutes_100');
+  const bestEver = Math.max(...history.map(s=>s.longestFocusMs));
+  if(summary.longestFocusMs === bestEver) unlock('best_focus');
+  const days = [...new Set(history.map(s=>s.date))].sort();
+  if(days.length>=2){
+    const last = new Date(days[days.length-1]);
+    const prev = new Date(days[days.length-2]);
+    if(Math.round((last-prev)/86400000) === 1) unlock('daily_streak');
+  }
+}
+
+/* ---------------- sound ---------------- */
+let audioCtx = null;
+function playBeep(){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type='sine'; osc.frequency.value=880;
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.25);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime+0.26);
+  }catch(e){ /* audio unavailable */ }
+}
+
+/* ---------------- toast ---------------- */
+let toastTimer=null;
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2600);
+}
+
+/* ---------------- pulse strip (signature element) ---------------- */
+const pulseCanvas = document.getElementById('pulseCanvas');
+const pulseCtx = pulseCanvas.getContext('2d');
+let pulsePhase = 0;
+let pulseSpikeTimer = 0;
+function pulseSpike(){ pulseSpikeTimer = 18; }
+function resizePulse(){
+  const rect = pulseCanvas.getBoundingClientRect();
+  pulseCanvas.width = rect.width * (window.devicePixelRatio||1);
+  pulseCanvas.height = rect.height * (window.devicePixelRatio||1);
+}
+window.addEventListener('resize', resizePulse);
+
+function drawPulse(){
+  resizePulse();
+  const w = pulseCanvas.width, h = pulseCanvas.height;
+  pulseCtx.clearRect(0,0,w,h);
+  const styles = getComputedStyle(document.documentElement);
+  const lineColor = session && session.status==='running' ? styles.getPropertyValue('--signal').trim() : styles.getPropertyValue('--text-muted').trim();
+  pulseCtx.strokeStyle = lineColor;
+  pulseCtx.lineWidth = 2*(window.devicePixelRatio||1);
+  pulseCtx.beginPath();
+  const mid = h/2;
+  const running = session && session.status==='running';
+  const streakMs = running ? (Date.now() - session.streakStartTime) : 0;
+  const amp = running ? Math.min(h*0.32, h*0.1 + (h*0.22)*Math.min(1, streakMs/60000)) : h*0.05;
+  for(let x=0; x<=w; x+=2){
+    const t = x/w*Math.PI*10 + pulsePhase;
+    let y = mid + Math.sin(t)*amp*0.15 + Math.sin(t*0.35)*amp*0.5;
+    if(pulseSpikeTimer>0){
+      const spikeX = w*0.5;
+      const dist = Math.abs(x-spikeX);
+      if(dist < 40) y -= (40-dist)*1.6*(pulseSpikeTimer/18);
+    }
+    if(x===0) pulseCtx.moveTo(x,y); else pulseCtx.lineTo(x,y);
+  }
+  pulseCtx.stroke();
+  pulsePhase += running ? 0.045 : 0.01;
+  if(pulseSpikeTimer>0) pulseSpikeTimer--;
+  requestAnimationFrame(drawPulse);
+}
+requestAnimationFrame(drawPulse);
+
+/* ---------------- clock ---------------- */
+function tickClock(){
+  const now = new Date();
+  document.getElementById('dateNow').textContent = now.toLocaleDateString([], {weekday:'short', year:'numeric', month:'short', day:'numeric'});
+  document.getElementById('timeNow').textContent = fmtClock(now);
+}
+setInterval(tickClock, 1000);
+
+/* ---------------- main render loop for live numbers ---------------- */
+function tickLive(){
+  if(!session) return;
+  const now = Date.now();
+  const running = session.status === 'running';
+  const sessionMs = (running ? now : (session.pausedAt||now)) - session.startTime - session.totalPausedMs;
+  const focusMs = running ? (now - session.streakStartTime) : (session.pausedAt - session.streakStartTime);
+  document.getElementById('sessionTimer').textContent = fmtHMS(sessionMs);
+  document.getElementById('focusTimer').textContent = fmtHMS(Math.max(0,focusMs));
+  renderLiveStats(sessionMs, focusMs);
+  renderWindows(now);
+}
+setInterval(tickLive, 1000);
+
+/* ================================================================
+   RENDERING
+   ================================================================ */
+function render(){
+  renderControls();
+  renderLiveStats(session ? (Date.now()-session.startTime-session.totalPausedMs) : 0, session ? (Date.now()-session.streakStartTime) : 0);
+  renderWindows(Date.now());
+  renderAnalytics();
+  renderHistoryTable();
+  renderDailyProgress();
+  renderWeekly();
+  renderCalendar();
+  renderMonthlyStats();
+  renderCharts();
+  renderAchievements();
+}
+
+function renderControls(){
+  const s = session ? session.status : 'idle';
+  document.getElementById('statusPill').textContent = s.charAt(0).toUpperCase()+s.slice(1);
+  document.getElementById('statusPill').className = 'status-pill ' + (s==='running'?'running':s==='paused'?'paused':s==='finished'?'finished':'');
+  document.getElementById('btnStart').disabled = !!session;
+  document.getElementById('btnDistract').disabled = !session || session.status!=='running';
+  document.getElementById('btnPause').disabled = !session || session.status!=='running';
+  document.getElementById('btnResume').disabled = !session || session.status!=='paused';
+  document.getElementById('btnEnd').disabled = !session;
+}
+
+function statTile(label, val, cls){
+  return `<div class="stat"><div class="label">${label}</div><div class="val ${cls||''}">${val}</div></div>`;
+}
+
+function renderLiveStats(sessionMs, focusMs){
+  const wrap = document.getElementById('liveStats');
+  if(!session){
+    wrap.innerHTML = statTile('Total distractions','—') + statTile('Current streak','—') + statTile('Longest streak','—') + statTile('Avg focus','—') + statTile('Shortest focus','—') + statTile('Total focused time','—') + statTile('Total session time','—');
+    return;
+  }
+  const streaks = session.distractions.map(d=>d.streakMs);
+  const longest = streaks.length ? Math.max(...streaks, focusMs) : focusMs;
+  const shortest = streaks.length ? Math.min(...streaks) : focusMs;
+  const avg = streaks.length ? streaks.reduce((a,b)=>a+b,0)/streaks.length : focusMs;
+  wrap.innerHTML =
+    statTile('Total distractions', session.distractions.length, 'alert') +
+    statTile('Current streak', fmtHMS(Math.max(0,focusMs)), 'signal') +
+    statTile('Longest streak', fmtMinSec(longest), 'signal') +
+    statTile('Average focus', fmtMinSec(avg)) +
+    statTile('Shortest focus', fmtMinSec(shortest)) +
+    statTile('Total focused time', fmtHMS(sessionMs), 'signal') +
+    statTile('Total session time', fmtHMS(sessionMs));
+}
+
+function renderWindows(now){
+  const wrap = document.getElementById('windowRow');
+  const windows = [1,5,10,15,30,60];
+  if(!session){
+    wrap.innerHTML = windows.map(m=>`<div class="window-chip"><b>—</b>${m}m</div>`).join('');
+    return;
+  }
+  wrap.innerHTML = windows.map(m=>{
+    const cutoff = now - m*60000;
+    const count = session.distractions.filter(d=>d.t>=cutoff).length;
+    return `<div class="window-chip"><b>${count}</b>${m}m</div>`;
+  }).join('');
+}
+
+function renderAnalytics(){
+  const wrap = document.getElementById('analyticsStats');
+  if(!session || session.distractions.length===0){
+    wrap.innerHTML = statTile('Avg focus duration','—') + statTile('Longest streak','—') + statTile('Shortest streak','—') + statTile('Median focus','—') + statTile('Total distractions','—') + statTile('Distractions / hour','—') + statTile('Focus %','—');
+    return;
+  }
+  const streaks = session.distractions.map(d=>d.streakMs);
+  const now = Date.now();
+  streaks.push(now - session.streakStartTime);
+  const avg = streaks.reduce((a,b)=>a+b,0)/streaks.length;
+  const longest = Math.max(...streaks);
+  const shortest = Math.min(...streaks);
+  const sorted = [...streaks].sort((a,b)=>a-b);
+  const median = sorted.length%2 ? sorted[(sorted.length-1)/2] : (sorted[sorted.length/2-1]+sorted[sorted.length/2])/2;
+  const sessionMs = now - session.startTime - session.totalPausedMs;
+  const hours = sessionMs/3600000;
+  const perHour = hours>0 ? session.distractions.length/hours : 0;
+  const target = settings.focusLenMin*60000;
+  const focusPct = Math.max(0, Math.min(100, Math.round((avg/target)*100)));
+  wrap.innerHTML =
+    statTile('Avg focus duration', fmtMinSec(avg)) +
+    statTile('Longest streak', fmtMinSec(longest), 'signal') +
+    statTile('Shortest streak', fmtMinSec(shortest), 'alert') +
+    statTile('Median focus', fmtMinSec(median)) +
+    statTile('Total distractions', session.distractions.length, 'alert') +
+    statTile('Distractions / hour', perHour.toFixed(1)) +
+    statTile('Focus %', focusPct+'%', 'signal');
+}
+
+/* ---------------- history table ---------------- */
+let sortKey = 'date', sortDir = -1;
+function scoreClass(label){ return 'score-' + label.replace(' ','').replace('Needs','Needs'); }
+function renderHistoryTable(){
+  const body = document.getElementById('historyBody');
+  const search = (document.getElementById('historySearch').value||'').toLowerCase();
+  let rows = history.filter(s=>s.date.toLowerCase().includes(search));
+  const keyFn = {
+    date: s=>s.startTime, start: s=>s.startTime, end: s=>s.endTime,
+    duration: s=>s.durationMs, distractions: s=>s.distractions,
+    avgFocus: s=>s.avgFocusMs, longestFocus: s=>s.longestFocusMs, score: s=>s.focusScore
+  }[sortKey];
+  rows = rows.sort((a,b)=>(keyFn(a)-keyFn(b))*sortDir);
+  document.getElementById('historyEmpty').style.display = rows.length ? 'none':'block';
+  body.innerHTML = rows.map(s=>`
+    <tr>
+      <td>${s.date}</td>
+      <td>${fmtClock(new Date(s.startTime))}</td>
+      <td>${fmtClock(new Date(s.endTime))}</td>
+      <td>${fmtHMS(s.durationMs)}</td>
+      <td>${s.distractions}</td>
+      <td>${fmtMinSec(s.avgFocusMs)}</td>
+      <td>${fmtMinSec(s.longestFocusMs)}</td>
+      <td><span class="score-badge ${scoreClass(s.focusScoreLabel)}">${s.focusScore}</span></td>
+    </tr>`).join('');
+}
+document.querySelectorAll('#historyTable th').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const key = th.dataset.key;
+    if(sortKey===key) sortDir *= -1; else { sortKey=key; sortDir=-1; }
+    renderHistoryTable();
+  });
+});
+document.getElementById('historySearch').addEventListener('input', renderHistoryTable);
+
+/* ---------------- daily progress ---------------- */
+function groupByDay(sessions){
+  const map = {};
+  sessions.forEach(s=>{
+    if(!map[s.date]) map[s.date] = [];
+    map[s.date].push(s);
+  });
+  return map;
+}
+function renderDailyProgress(){
+  const body = document.getElementById('dailyBody');
+  const map = groupByDay(history);
+  const dates = Object.keys(map).sort().reverse();
+  document.getElementById('dailyEmpty').style.display = dates.length ? 'none':'block';
+  body.innerHTML = dates.map(date=>{
+    const sess = map[date];
+    const totalStudy = sess.reduce((a,s)=>a+s.durationMs,0);
+    const totalDist = sess.reduce((a,s)=>a+s.distractions,0);
+    const avgFocus = sess.reduce((a,s)=>a+s.avgFocusMs,0)/sess.length;
+    const longest = Math.max(...sess.map(s=>s.longestFocusMs));
+    const best = sess.reduce((a,s)=>s.focusScore>a.focusScore?s:a, sess[0]);
+    return `<tr>
+      <td>${date}</td><td>${sess.length}</td><td>${fmtHMS(totalStudy)}</td>
+      <td>${totalDist}</td><td>${fmtMinSec(avgFocus)}</td><td>${fmtMinSec(longest)}</td>
+      <td><span class="score-badge ${scoreClass(best.focusScoreLabel)}">${best.focusScore}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------------- weekly report ---------------- */
+function renderWeekly(){
+  const wrap = document.getElementById('weeklyStats');
+  const now = Date.now();
+  const weekAgo = now - 7*86400000;
+  const twoWeeksAgo = now - 14*86400000;
+  const thisWeek = history.filter(s=>s.startTime>=weekAgo);
+  const lastWeek = history.filter(s=>s.startTime>=twoWeeksAgo && s.startTime<weekAgo);
+  if(thisWeek.length===0){
+    wrap.innerHTML = `<div class="empty">No sessions in the last 7 days.</div>`;
+    return;
+  }
+  const studyHours = thisWeek.reduce((a,s)=>a+s.durationMs,0)/3600000;
+  const avgDistr = thisWeek.reduce((a,s)=>a+s.distractions,0)/thisWeek.length;
+  const avgFocus = thisWeek.reduce((a,s)=>a+s.avgFocusMs,0)/thisWeek.length;
+  const longest = Math.max(...thisWeek.map(s=>s.longestFocusMs));
+  const byDay = groupByDay(thisWeek);
+  let bestDay=null, worstDay=null;
+  Object.entries(byDay).forEach(([date,sess])=>{
+    const avgScore = sess.reduce((a,s)=>a+s.focusScore,0)/sess.length;
+    if(!bestDay || avgScore>bestDay.score) bestDay={date,score:avgScore};
+    if(!worstDay || avgScore<worstDay.score) worstDay={date,score:avgScore};
+  });
+  const lastAvgScore = lastWeek.length ? lastWeek.reduce((a,s)=>a+s.focusScore,0)/lastWeek.length : null;
+  const thisAvgScore = thisWeek.reduce((a,s)=>a+s.focusScore,0)/thisWeek.length;
+  const improvement = lastAvgScore!==null && lastAvgScore>0 ? (((thisAvgScore-lastAvgScore)/lastAvgScore)*100) : null;
+  wrap.innerHTML =
+    statTile('Study hours', studyHours.toFixed(1)+'h', 'signal') +
+    statTile('Avg distractions', avgDistr.toFixed(1), 'alert') +
+    statTile('Avg focus duration', fmtMinSec(avgFocus)) +
+    statTile('Improvement', improvement===null?'—':(improvement>=0?'+':'')+improvement.toFixed(0)+'%', improvement>0?'signal':(improvement<0?'alert':'')) +
+    statTile('Longest streak', fmtMinSec(longest), 'signal') +
+    statTile('Best day', bestDay?bestDay.date:'—') +
+    statTile('Worst day', worstDay?worstDay.date:'—', 'alert');
+}
+
+/* ---------------- monthly calendar ---------------- */
+let calMonthOffset = 0;
+function renderCalendar(){
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth()+calMonthOffset, 1);
+  document.getElementById('calLabel').textContent = target.toLocaleDateString([], {month:'long', year:'numeric'});
+  const dow = document.getElementById('calDow');
+  dow.innerHTML = ['S','M','T','W','T','F','S'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+
+  const map = groupByDay(history);
+  const firstDow = target.getDay();
+  const daysInMonth = new Date(target.getFullYear(), target.getMonth()+1, 0).getDate();
+  const grid = document.getElementById('calGrid');
+  let html = '';
+  for(let i=0;i<firstDow;i++) html += `<div class="cal-cell"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${target.getFullYear()}-${String(target.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const sess = map[dateStr];
+    if(sess){
+      const avgScore = Math.round(sess.reduce((a,s)=>a+s.focusScore,0)/sess.length);
+      const color = avgScore>=85 ? 'var(--signal)' : avgScore>=70 ? 'var(--violet)' : avgScore>=50 ? 'var(--alert)' : '#c05656';
+      html += `<div class="cal-cell has-data" style="background:${color}" title="${dateStr}: score ${avgScore}">${d}</div>`;
+    } else {
+      html += `<div class="cal-cell">${d}</div>`;
+    }
+  }
+  grid.innerHTML = html;
+}
+
+function renderMonthlyStats(){
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth()+calMonthOffset, 1);
+  const monthSessions = history.filter(s=>{
+    const d = new Date(s.startTime);
+    return d.getFullYear()===target.getFullYear() && d.getMonth()===target.getMonth();
+  });
+  const wrap = document.getElementById('monthlyStats');
+  if(monthSessions.length===0){ wrap.innerHTML = `<div class="empty">No sessions this month.</div>`; return; }
+  const totalHours = monthSessions.reduce((a,s)=>a+s.durationMs,0)/3600000;
+  const totalDistr = monthSessions.reduce((a,s)=>a+s.distractions,0);
+  const avgScore = Math.round(monthSessions.reduce((a,s)=>a+s.focusScore,0)/monthSessions.length);
+  wrap.innerHTML =
+    statTile('Total study hours', totalHours.toFixed(1)+'h','signal') +
+    statTile('Total distractions', totalDistr,'alert') +
+    statTile('Avg focus score', avgScore, avgScore>=70?'signal':'alert');
+}
+
+/* ================================================================
+   HAND-ROLLED CANVAS CHARTS (kept dependency-free so the app
+   stays truly offline in a single file)
+   ================================================================ */
+function fitCanvas(canvas){
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio||1;
+  canvas.width = Math.max(1,rect.width*dpr);
+  canvas.height = Math.max(1,140*dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { ctx, w: rect.width, h: 140 };
+}
+function drawBarChart(canvasId, labels, values, color, formatter){
+  const canvas = document.getElementById(canvasId);
+  const {ctx,w,h} = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!values.length){ ctx.fillStyle='#8a8f98'; ctx.font='12px sans-serif'; ctx.fillText('No data yet', 10, h/2); return; }
+  const max = Math.max(...values, 1);
+  const padL=6, padB=18, padT=6;
+  const bw = (w-padL*2)/values.length;
+  ctx.fillStyle = color;
+  values.forEach((v,i)=>{
+    const bh = (v/max)*(h-padB-padT);
+    const x = padL + i*bw + bw*0.15;
+    const y = h-padB-bh;
+    ctx.fillRect(x, y, bw*0.7, bh);
+  });
+  ctx.fillStyle = '#8a8f98';
+  ctx.font = '9px monospace';
+  labels.forEach((l,i)=>{
+    if(labels.length>10 && i%Math.ceil(labels.length/10)!==0) return;
+    const x = padL + i*bw + bw*0.5;
+    ctx.fillText(l, x-8, h-4);
+  });
+}
+function drawLineChart(canvasId, labels, values, color){
+  const canvas = document.getElementById(canvasId);
+  const {ctx,w,h} = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!values.length){ ctx.fillStyle='#8a8f98'; ctx.font='12px sans-serif'; ctx.fillText('No data yet', 10, h/2); return; }
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = (max-min)||1;
+  const padL=6, padB=18, padT=6;
+  const stepX = values.length>1 ? (w-padL*2)/(values.length-1) : 0;
+  ctx.strokeStyle = color; ctx.lineWidth=2; ctx.beginPath();
+  values.forEach((v,i)=>{
+    const x = padL + i*stepX;
+    const y = padT + (1-(v-min)/range)*(h-padB-padT);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.fillStyle = color;
+  values.forEach((v,i)=>{
+    const x = padL + i*stepX;
+    const y = padT + (1-(v-min)/range)*(h-padB-padT);
+    ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
+  });
+  ctx.fillStyle = '#8a8f98'; ctx.font='9px monospace';
+  labels.forEach((l,i)=>{
+    if(labels.length>10 && i%Math.ceil(labels.length/10)!==0) return;
+    const x = padL + i*stepX;
+    ctx.fillText(l, Math.max(0,x-10), h-4);
+  });
+}
+
+function lastNDays(n){
+  const days=[];
+  for(let i=n-1;i>=0;i--){
+    const d = new Date(Date.now()-i*86400000);
+    days.push(dayKey(d));
+  }
+  return days;
+}
+function renderCharts(){
+  const styles = getComputedStyle(document.documentElement);
+  const signal = styles.getPropertyValue('--signal').trim();
+  const alert = styles.getPropertyValue('--alert').trim();
+  const violet = styles.getPropertyValue('--violet').trim();
+
+  const days = lastNDays(14);
+  const map = groupByDay(history);
+  const dLabels = days.map(d=>d.slice(5));
+  const distrCounts = days.map(d=> (map[d]||[]).reduce((a,s)=>a+s.distractions,0));
+  const avgFocusMin = days.map(d=>{
+    const sess = map[d]||[];
+    if(!sess.length) return 0;
+    return Math.round(sess.reduce((a,s)=>a+s.avgFocusMs,0)/sess.length/60000*10)/10;
+  });
+  const longestMin = days.map(d=>{
+    const sess = map[d]||[];
+    if(!sess.length) return 0;
+    return Math.round(Math.max(...sess.map(s=>s.longestFocusMs))/60000*10)/10;
+  });
+  drawBarChart('chartDistractions', dLabels, distrCounts, alert);
+  drawBarChart('chartAvgFocus', dLabels, avgFocusMin, signal);
+  drawBarChart('chartLongest', dLabels, longestMin, violet);
+
+  // weekly progress: last 8 weeks avg focus score
+  const weekLabels=[], weekScores=[];
+  for(let i=7;i>=0;i--){
+    const start = Date.now()-i*7*86400000-7*86400000;
+    const end = Date.now()-i*7*86400000;
+    const sess = history.filter(s=>s.startTime>=start && s.startTime<end);
+    weekLabels.push('W'+(8-i));
+    weekScores.push(sess.length ? Math.round(sess.reduce((a,s)=>a+s.focusScore,0)/sess.length) : 0);
+  }
+  drawLineChart('chartWeekly', weekLabels, weekScores, signal);
+
+  // monthly improvement: last 6 months avg score
+  const monthLabels=[], monthScores=[];
+  const now = new Date();
+  for(let i=5;i>=0;i--){
+    const m = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const sess = history.filter(s=>{
+      const d=new Date(s.startTime);
+      return d.getFullYear()===m.getFullYear() && d.getMonth()===m.getMonth();
+    });
+    monthLabels.push(m.toLocaleDateString([], {month:'short'}));
+    monthScores.push(sess.length ? Math.round(sess.reduce((a,s)=>a+s.focusScore,0)/sess.length) : 0);
+  }
+  drawLineChart('chartMonthly', monthLabels, monthScores, violet);
+
+  // distractions per session (last 14 sessions)
+  const recent = history.slice(-14);
+  drawBarChart('chartPerSession', recent.map((s,i)=>String(i+1)), recent.map(s=>s.distractions), alert);
+}
+
+/* ---------------- achievements render ---------------- */
+function renderAchievements(){
+  const grid = document.getElementById('achieveGrid');
+  grid.innerHTML = ACHIEVEMENTS.map(a=>{
+    const unlocked = !!achievementsUnlocked[a.id];
+    return `<div class="achieve ${unlocked?'unlocked':''}">
+      <div class="ic">${a.ic}</div>
+      <div class="name">${a.name}</div>
+      <div class="desc">${a.desc}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ================================================================
+   CSV EXPORT
+   ================================================================ */
+function exportCSV(){
+  const rows = [['Date','Start','End','Duration(s)','Distractions','AvgFocus(s)','LongestFocus(s)','ShortestFocus(s)','MedianFocus(s)','FocusScore','ScoreLabel']];
+  history.forEach(s=>{
+    rows.push([
+      s.date, new Date(s.startTime).toISOString(), new Date(s.endTime).toISOString(),
+      Math.round(s.durationMs/1000), s.distractions, Math.round(s.avgFocusMs/1000),
+      Math.round(s.longestFocusMs/1000), Math.round(s.shortestFocusMs/1000), Math.round(s.medianFocusMs/1000),
+      s.focusScore, s.focusScoreLabel
+    ]);
+  });
+  rows.push([]);
+  rows.push(['Distraction log']);
+  rows.push(['Date','Timestamp','SessionTime(s)','GapSincePrevious(s)']);
+  history.forEach(s=>{
+    (s.distractionLog||[]).forEach(d=>{
+      rows.push([s.date, new Date(d.t).toISOString(), Math.round(d.sessionTimeMs/1000), Math.round(d.gapMs/1000)]);
+    });
+  });
+  const csv = rows.map(r=>r.map(v=>{
+    const str = String(v??'');
+    return /[,"\n]/.test(str) ? '"'+str.replace(/"/g,'""')+'"' : str;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `signal-focus-data-${dayKey(Date.now())}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('CSV exported.');
+}
+
+/* ================================================================
+   SETTINGS
+   ================================================================ */
+function applySettingsToUI(){
+  document.getElementById('setSessionLen').value = settings.sessionLenMin;
+  document.getElementById('setFocusLen').value = settings.focusLenMin;
+  document.getElementById('setSound').checked = settings.sound;
+  document.getElementById('setAutosave').checked = settings.autosave;
+  document.documentElement.setAttribute('data-theme', settings.theme);
+  document.getElementById('segDark').classList.toggle('active', settings.theme==='dark');
+  document.getElementById('segLight').classList.toggle('active', settings.theme==='light');
+  document.documentElement.style.setProperty('--btn-size', settings.btnSize);
+  document.documentElement.style.setProperty('--font-size', settings.fontSize);
+  document.querySelectorAll('[data-btnsize]').forEach(b=>b.classList.toggle('active', parseFloat(b.dataset.btnsize)===settings.btnSize));
+  document.querySelectorAll('[data-fontsize]').forEach(b=>b.classList.toggle('active', parseFloat(b.dataset.fontsize)===settings.fontSize));
+}
+function persistSettings(){ saveJSON(STORE_KEYS.settings, settings); }
+
+document.getElementById('setSessionLen').addEventListener('change', e=>{ settings.sessionLenMin = Math.max(1, parseInt(e.target.value)||25); persistSettings(); });
+document.getElementById('setFocusLen').addEventListener('change', e=>{ settings.focusLenMin = Math.max(1, parseInt(e.target.value)||10); persistSettings(); render(); });
+document.getElementById('setSound').addEventListener('change', e=>{ settings.sound = e.target.checked; persistSettings(); });
+document.getElementById('setAutosave').addEventListener('change', e=>{ settings.autosave = e.target.checked; persistSettings(); });
+document.getElementById('segDark').addEventListener('click', ()=>{ settings.theme='dark'; persistSettings(); applySettingsToUI(); });
+document.getElementById('segLight').addEventListener('click', ()=>{ settings.theme='light'; persistSettings(); applySettingsToUI(); });
+document.querySelectorAll('[data-btnsize]').forEach(b=>b.addEventListener('click', ()=>{ settings.btnSize=parseFloat(b.dataset.btnsize); persistSettings(); applySettingsToUI(); }));
+document.querySelectorAll('[data-fontsize]').forEach(b=>b.addEventListener('click', ()=>{ settings.fontSize=parseFloat(b.dataset.fontsize); persistSettings(); applySettingsToUI(); }));
+
+/* ================================================================
+   NAVIGATION
+   ================================================================ */
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('view-'+tab.dataset.view).classList.add('active');
+    render();
+  });
+});
+
+/* ================================================================
+   BUTTON WIRING
+   ================================================================ */
+document.getElementById('btnStart').addEventListener('click', startSession);
+document.getElementById('btnPause').addEventListener('click', pauseSession);
+document.getElementById('btnResume').addEventListener('click', resumeSession);
+document.getElementById('btnDistract').addEventListener('click', logDistraction);
+document.getElementById('btnEnd').addEventListener('click', ()=>{
+  if(confirm('End the current session? This will be saved to your history.')) endSession();
+});
+document.getElementById('btnReset').addEventListener('click', ()=>{
+  if(!session || confirm('Reset the current in-progress session? Unsaved progress will be lost.')) resetSession();
+});
+document.getElementById('btnExport').addEventListener('click', exportCSV);
+document.getElementById('btnClear').addEventListener('click', ()=>{
+  if(confirm('Clear all saved history and achievements? This cannot be undone.')){
+    history = []; achievementsUnlocked = {};
+    saveJSON(STORE_KEYS.sessions, history);
+    saveJSON(STORE_KEYS.achievements, achievementsUnlocked);
+    showToast('History cleared.');
+    render();
+  }
+});
+
+/* ================================================================
+   INIT
+   ================================================================ */
+tickClock();
+applySettingsToUI();
+render();
+</script>
+</body>
+</html>
